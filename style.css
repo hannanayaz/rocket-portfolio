@@ -1,0 +1,59 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    overflow: hidden;
+    background-color: #030308;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: #ffffff;
+    user-select: none;
+}
+
+#hud {
+    position: absolute;
+    top: 24px;
+    left: 24px;
+    z-index: 10;
+    pointer-events: none;
+    background: rgba(10, 15, 30, 0.7);
+    padding: 14px 20px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(6px);
+}
+
+#hud h1 {
+    font-size: 18px;
+    letter-spacing: 2px;
+    margin-bottom: 6px;
+    color: #4cc9f0;
+}
+
+#hud p {
+    font-size: 13px;
+    color: #b0c4de;
+    line-height: 1.5;
+}
+
+/* Center countdown overlay */
+#countdown-overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 80px;
+    font-weight: 800;
+    color: #f72585;
+    text-shadow: 0 0 25px rgba(247, 37, 133, 0.8);
+    pointer-events: none;
+    z-index: 20;
+}
+
+#game-canvas {
+    width: 100vw;
+    height: 100vh;
+    display: block;
+}

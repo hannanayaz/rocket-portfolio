@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>3D Rocket Portfolio</title>
+    <link rel="stylesheet" href="style.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+
+<body>
+    <div id="hud">
+        <h1 id="mission-status">STATUS: ON LAUNCH PAD</h1>
+        <p id="instruction-text">Press <b>[SPACEBAR]</b> to Begin Countdown</p>
+    </div>
+
+    <!-- This is the new countdown element for Step 2 -->
+    <div id="countdown-overlay"></div>
+
+    <canvas id="game-canvas"></canvas>
+
+    <script src="main.js"></script>
+</body>
+
+</html>
