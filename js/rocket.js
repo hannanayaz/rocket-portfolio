@@ -1,57 +1,98 @@
 // ==========================================
-// ROCKET MODULE: 3D Model & Thruster Engine
+// ROCKET MODULE: Full 5-Piece Assembled Rocket
 // ==========================================
 
-export function createRocket(scene) {
+export function createRocket(scene, onLoadedCallback) {
+    const loader = new THREE.GLTFLoader();
     const rocketGroup = new THREE.Group();
 
-    // 1. Rocket Fuselage (White Body)
-    const bodyGeo = new THREE.CylinderGeometry(0.5, 0.7, 3, 32);
-    const bodyMat = new THREE.MeshStandardMaterial({
-        color: 0xf5f5f5,
-        metalness: 0.2,
-        roughness: 0.3
-    });
-    const body = new THREE.Mesh(bodyGeo, bodyMat);
-    body.position.y = 1.5;
-    rocketGroup.add(body);
+    const loadPart = (filename) => {
+        return new Promise((resolve, reject) => {
+            loader.load(
+                `assets/${filename}`,
+                (gltf) => {
+                    const model = gltf.scene;
 
-    // 2. Nose Cone (Red Top)
-    const noseGeo = new THREE.ConeGeometry(0.5, 1.2, 32);
-    const redMat = new THREE.MeshStandardMaterial({
-        color: 0xe63946,
-        metalness: 0.1,
-        roughness: 0.2
-    });
-    const nose = new THREE.Mesh(noseGeo, redMat);
-    nose.position.y = 3.6;
-    rocketGroup.add(nose);
+                    // Enable shadow casting and receiving on all child meshes
+                    model.traverse((child) => {
+                        if (child.isMesh) {
+                            child.castShadow = true;
+                            child.receiveShadow = true;
+                        }
+                    });
 
-    // 3. Fins (Left and Right Stabilization Wings)
-    const finGeo = new THREE.BoxGeometry(0.12, 0.8, 0.8);
-    const leftFin = new THREE.Mesh(finGeo, redMat);
-    leftFin.position.set(-0.75, 0.6, 0);
-    rocketGroup.add(leftFin);
+                    // Measure bounding box to normalize X/Z centering and bottom Y
+                    const box = new THREE.Box3().setFromObject(model);
+                    const center = box.getCenter(new THREE.Vector3());
 
-    const rightFin = new THREE.Mesh(finGeo, redMat);
-    rightFin.position.set(0.75, 0.6, 0);
-    rocketGroup.add(rightFin);
+                    // Compensate for exporter translation offset so the part is centered at (0, 0)
+                    model.position.x -= center.x;
+                    model.position.z -= center.z;
+                    model.position.y -= box.min.y;
 
-    // 4. Exhaust Nozzle
-    const nozzleGeo = new THREE.CylinderGeometry(0.35, 0.5, 0.4, 24);
-    const nozzleMat = new THREE.MeshStandardMaterial({
-        color: 0x222225,
-        metalness: 0.8,
-        roughness: 0.4
-    });
-    const nozzle = new THREE.Mesh(nozzleGeo, nozzleMat);
-    nozzle.position.y = -0.2;
-    rocketGroup.add(nozzle);
+                    // Wrap in a dedicated part pivot group
+                    const partGroup = new THREE.Group();
+                    partGroup.add(model);
 
-    // 5. Dock the rocket on the Launchpad platform & Scale to match the tower
-    rocketGroup.scale.set(1.5, 1.5, 1.5); // Makes the rocket 50% larger and thicker
-    rocketGroup.position.set(0, 0.4, 0);
+                    const height = box.max.y - box.min.y;
+                    resolve({ group: partGroup, height: height });
+                },
+                undefined,
+                (err) => reject(err)
+            );
+        });
+    };
 
-    scene.add(rocketGroup);
-    return rocketGroup;
+    Promise.all([
+        loadPart('rocket_baseA.glb'),
+        loadPart('rocket_fuelA.glb'),
+        loadPart('rocket_topA.glb'),
+        loadPart('rocket_sidesA.glb'),
+        loadPart('rocket_finsA.glb')
+    ])
+        .then(([baseData, fuelData, topData, sidesData, finsData]) => {
+            const base = baseData.group;
+            const fuel = fuelData.group;
+            const top = topData.group;
+            const sides = sidesData.group;
+            const fins = finsData.group;
+
+            // 1. Base booster module (measured height: 1.6)
+            base.position.set(0, 0, 0);
+            rocketGroup.add(base);
+
+            // 2. Fins locked onto base fuselage collar (measured height: 0.7, spans y=0.8 to 1.5)
+            fins.position.set(0, 0.8, 0);
+            rocketGroup.add(fins);
+
+            // 3. Lower fuselage with side details (measured height: 1.0, spans y=1.6 to 2.6)
+            // Sits flush on top of the base booster
+            const sidesY = baseData.height;
+            sides.position.set(0, sidesY, 0);
+            rocketGroup.add(sides);
+
+            // 4. Upper fuel tank stage (measured height: 0.5, spans y=2.6 to 3.1)
+            // Sits flush on top of the sides module
+            const fuelY = sidesY + sidesData.height;
+            fuel.position.set(0, fuelY, 0);
+            rocketGroup.add(fuel);
+
+            // 5. Nose cone sitting flush on top of fuel tank (measured height: 0.8, spans y=3.1 to 3.9)
+            // Completely eliminates the previous 0.8-unit gap
+            const topY = fuelY + fuelData.height;
+            top.position.set(0, topY, 0);
+            rocketGroup.add(top);
+
+            // Scale and dock the rocket on the launchpad at (-0.9, 0.72, -0.6)
+            // Flush with the blast deflector grate and embraced by the gantry service arms
+            rocketGroup.scale.set(1.9, 1.9, 1.9);
+            rocketGroup.position.set(-0.9, 0.72, -0.6);
+
+            scene.add(rocketGroup);
+
+            if (onLoadedCallback) onLoadedCallback(rocketGroup);
+        })
+        .catch((err) => {
+            console.error('Error loading rocket parts:', err);
+        });
 }
