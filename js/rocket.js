@@ -9,7 +9,7 @@ export function createRocket(scene, onLoadedCallback) {
     const loadPart = (filename) => {
         return new Promise((resolve, reject) => {
             loader.load(
-                `assets/${filename}`,
+                `assets/rocket/${filename}`,
                 (gltf) => {
                     const model = gltf.scene;
 
