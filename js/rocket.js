@@ -83,10 +83,17 @@ export function createRocket(scene, onLoadedCallback) {
             top.position.set(0, topY, 0);
             rocketGroup.add(top);
 
-            // Scale and dock the rocket on the launchpad at (-0.9, 0.72, -0.6)
-            // Flush with the blast deflector grate and embraced by the gantry service arms
+
+            // Scale the complete assembled rocket.
             rocketGroup.scale.set(1.9, 1.9, 1.9);
+
+            // Keep the rocket in its existing launchpad position.
             rocketGroup.position.set(-0.9, 0.72, -0.6);
+
+            // Store the original orientation so we can apply smooth
+            // banking during turns without losing the initial rotation.
+            rocketGroup.rotation.set(0, 0, 0);
+
 
             scene.add(rocketGroup);
 
