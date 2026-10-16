@@ -1,5 +1,5 @@
 
-/* ROCKET CONTROLS: Speed, steering and banking */
+// ROCKET CONTROLS: Speed, steering and banking
 
 const keysPressed = new Set();
 
@@ -25,7 +25,7 @@ export function setupRocketControls() {
     });
 }
 
-// Apply acceleration, braking and smooth 3D turns.
+// Apply speed and horizontal steering.
 export function updateRocketControls(rocket, deltaTime, normalSpeed) {
     if (!rocket) return normalSpeed;
 
@@ -40,27 +40,26 @@ export function updateRocketControls(rocket, deltaTime, normalSpeed) {
         speed = normalSpeed * 0.5;
     }
 
-    // A / Left and D / Right steer the rocket.
-    const steeringSpeed = 8;
+    // A / Left moves left; D / Right moves right.
+    const steeringSpeed = 18;
     let turnDirection = 0;
 
     if (keysPressed.has('KeyA') || keysPressed.has('ArrowLeft')) {
         rocket.position.x -= steeringSpeed * deltaTime;
-        turnDirection = 1;
+        turnDirection = -1;
     }
 
     if (keysPressed.has('KeyD') || keysPressed.has('ArrowRight')) {
         rocket.position.x += steeringSpeed * deltaTime;
-        turnDirection = -1;
+        turnDirection = 1;
     }
 
-    // Smoothly bank the rocket while turning.
-    const targetBank = turnDirection * 0.45;
-    rocket.rotation.z = THREE.MathUtils.lerp(
-        rocket.rotation.z,
-        targetBank,
-        Math.min(deltaTime * 4, 1)
-    );
+    // Stronger banking in the correct direction.
+    const targetBank = -turnDirection * 0.6;
+    const blend = Math.min(deltaTime * 4, 1);
+
+    rocket.rotation.z +=
+        (targetBank - rocket.rotation.z) * blend;
 
     return speed;
 }

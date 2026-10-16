@@ -1,8 +1,3 @@
-
-// ==========================================
-// MAIN MODULE: Rocket Portfolio Launch
-// ==========================================
-
 import {
     setupCamera,
     setupLighting,
@@ -22,15 +17,43 @@ import {
     updateRocketControls
 } from './js/controls.js';
 
+// ==========================================
+// SETTINGS
+// ==========================================
+
+const TARGET_TILT_DEGREES = 90;
+const SPEED_MULTIPLIER = 2.5;
+const TILT_SPEED = 3.0;
+const FLAME_OFFSET_Y = 0;
+
+const BACKGROUND_STAR_COUNT = 9000;
+const BACKGROUND_STAR_SIZE = 2.6;
+
+console.log('main.js BUILD v6 loaded');
+
+// ==========================================
+// SCENE SETUP
+// ==========================================
+
 const canvas = document.getElementById('game-canvas');
 const missionStatus = document.getElementById('mission-status');
 const instructionText = document.getElementById('instruction-text');
 const countdownOverlay = document.getElementById('countdown-overlay');
 
 const scene = new THREE.Scene();
+
+const skyColour = new THREE.Color(0xbde0fe);
+const spaceColour = new THREE.Color(0x02030d);
+
+scene.background = skyColour.clone();
+
 setupRocketControls();
 
 const camera = setupCamera();
+
+camera.far = Math.max(camera.far, 2000);
+camera.updateProjectionMatrix();
+
 setupLighting(scene);
 createEarthGround(scene);
 
@@ -46,12 +69,15 @@ let innerFlame = null;
 let engineLight = null;
 let flameGroup = null;
 
+const cameraStartPosition = camera.position.clone();
+
 // ==========================================
 // SMOKE EFFECT
 // ==========================================
 
 const smokeParticles = [];
 let smokeActive = false;
+let smokeStopping = false;
 
 function createSmokeEffect() {
     const smokeGeometry = new THREE.SphereGeometry(1, 12, 10);
@@ -81,6 +107,7 @@ function createSmokeEffect() {
 
 function startSmokeEffect() {
     smokeActive = true;
+    smokeStopping = false;
 
     smokeParticles.forEach(particle => {
         particle.age = -particle.delay;
@@ -91,19 +118,30 @@ function startSmokeEffect() {
 function updateSmokeEffect(deltaTime) {
     if (!smokeActive) return;
 
+    let anyVisible = false;
+
     smokeParticles.forEach(particle => {
         particle.age += deltaTime;
 
         if (particle.age < 0) return;
 
         if (particle.age >= particle.lifetime) {
+            if (smokeStopping) {
+                particle.mesh.visible = false;
+                particle.mesh.material.opacity = 0;
+                particle.age = -9999;
+                return;
+            }
+
             particle.age = 0;
             particle.lifetime = 2 + Math.random() * 2;
 
             particle.mesh.position.set(
-                rocket ? rocket.position.x + (Math.random() - 0.5) * 2 : -0.9,
+                (rocket ? rocket.position.x : -0.9) +
+                (Math.random() - 0.5) * 2,
                 0.15 + Math.random() * 0.5,
-                rocket ? rocket.position.z + (Math.random() - 0.5) * 2 : -0.6
+                (rocket ? rocket.position.z : -0.6) +
+                (Math.random() - 0.5) * 2
             );
 
             particle.velocity.set(
@@ -113,7 +151,6 @@ function updateSmokeEffect(deltaTime) {
             );
 
             particle.mesh.scale.setScalar(0.45 + Math.random() * 0.5);
-            particle.mesh.visible = true;
         }
 
         const progress = particle.age / particle.lifetime;
@@ -131,53 +168,88 @@ function updateSmokeEffect(deltaTime) {
             0.32 * Math.sin(Math.PI * progress);
 
         particle.mesh.visible = true;
+        anyVisible = true;
     });
+
+    if (smokeStopping && !anyVisible) {
+        smokeActive = false;
+    }
 }
 
 // ==========================================
-// SCENE, CLOUDS AND SPACE
+// SPACE ENVIRONMENT: SMALL BACKGROUND STARS
 // ==========================================
 
-const cameraStartPosition = camera.position.clone();
+function createSoftDotTexture() {
+    const canvasTexture = document.createElement('canvas');
+    canvasTexture.width = canvasTexture.height = 64;
 
-const skyColour = new THREE.Color(0xbde0fe);
-const spaceColour = new THREE.Color(0x02030d);
+    const context = canvasTexture.getContext('2d');
+    const gradient = context.createRadialGradient(32, 32, 0, 32, 32, 32);
+
+    gradient.addColorStop(0, 'rgba(255,255,255,1)');
+    gradient.addColorStop(0.35, 'rgba(255,255,255,0.8)');
+    gradient.addColorStop(1, 'rgba(255,255,255,0)');
+
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, 64, 64);
+
+    return new THREE.CanvasTexture(canvasTexture);
+}
 
 function createSpaceEnvironment() {
-    const starCount = 10000;
-    const starPositions = new Float32Array(starCount * 3);
-    const starSizes = new Float32Array(starCount);
+    const starPositions = new Float32Array(
+        BACKGROUND_STAR_COUNT * 3
+    );
 
-    for (let i = 0; i < starCount; i++) {
-        starPositions[i * 3] = (Math.random() - 0.5) * 900;
-        starPositions[i * 3 + 1] = 20 + Math.random() * 1000;
-        starPositions[i * 3 + 2] = (Math.random() - 0.5) * 900;
-        starSizes[i] = 0.5 + Math.random() * 1.5;
+    const temporaryVector = new THREE.Vector3();
+
+    for (let i = 0; i < BACKGROUND_STAR_COUNT; i++) {
+        do {
+            temporaryVector.set(
+                Math.random() * 2 - 1,
+                Math.random() * 2 - 1,
+                Math.random() * 2 - 1
+            );
+        } while (
+            temporaryVector.lengthSq() > 1 ||
+            temporaryVector.lengthSq() < 0.0001
+        );
+
+        temporaryVector.normalize().multiplyScalar(
+            400 + Math.random() * 100
+        );
+
+        starPositions[i * 3] = temporaryVector.x;
+        starPositions[i * 3 + 1] = temporaryVector.y;
+        starPositions[i * 3 + 2] = temporaryVector.z;
     }
 
     const starGeometry = new THREE.BufferGeometry();
+
     starGeometry.setAttribute(
         'position',
         new THREE.BufferAttribute(starPositions, 3)
     );
-    starGeometry.setAttribute(
-        'size',
-        new THREE.BufferAttribute(starSizes, 1)
-    );
 
     const starMaterial = new THREE.PointsMaterial({
         color: 0xffffff,
-        size: 0.7,
+        map: createSoftDotTexture(),
+        alphaTest: 0.01,
+        size: BACKGROUND_STAR_SIZE,
+        sizeAttenuation: false,
         transparent: true,
         opacity: 0,
-        sizeAttenuation: true,
         depthWrite: false
     });
 
     const stars = new THREE.Points(starGeometry, starMaterial);
+    stars.frustumCulled = false;
     scene.add(stars);
 
+    // Planet remains hidden until the portfolio sequence is built.
     const planetGeometry = new THREE.SphereGeometry(5, 32, 24);
+
     const planetMaterial = new THREE.MeshStandardMaterial({
         color: 0x3678d4,
         roughness: 0.8,
@@ -188,9 +260,11 @@ function createSpaceEnvironment() {
 
     const planet = new THREE.Mesh(planetGeometry, planetMaterial);
     planet.position.set(22, 88, -35);
+    planet.visible = false;
     scene.add(planet);
 
     const atmosphereGeometry = new THREE.SphereGeometry(5.35, 32, 24);
+
     const atmosphereMaterial = new THREE.MeshBasicMaterial({
         color: 0x54aaff,
         transparent: true,
@@ -202,13 +276,20 @@ function createSpaceEnvironment() {
         atmosphereGeometry,
         atmosphereMaterial
     );
+
     atmosphere.position.copy(planet.position);
+    atmosphere.visible = false;
     scene.add(atmosphere);
 
-    return { stars, planet, atmosphere };
+    return {
+        stars,
+        planet,
+        atmosphere
+    };
 }
 
 const spaceObjects = createSpaceEnvironment();
+
 createClouds(scene);
 createSmokeEffect();
 
@@ -252,30 +333,43 @@ window.addEventListener('resize', () => {
 
 function createEngineFlame() {
     flameGroup = new THREE.Group();
+    flameGroup.position.y = FLAME_OFFSET_Y;
 
-    const outerGeometry = new THREE.ConeGeometry(0.32, 1.5, 12);
+    const outerHeight = 1.5;
+    const outerGeometry = new THREE.ConeGeometry(0.32, outerHeight, 16);
+
+    outerGeometry.rotateX(Math.PI);
+    outerGeometry.translate(0, -outerHeight / 2, 0);
+
     const outerMaterial = new THREE.MeshBasicMaterial({
-        color: 0xff6500
+        color: 0xff6500,
+        transparent: true,
+        opacity: 0.9,
+        depthWrite: false
     });
 
     engineFlame = new THREE.Mesh(outerGeometry, outerMaterial);
-    engineFlame.rotation.z = Math.PI;
-    engineFlame.position.y = -0.75;
     flameGroup.add(engineFlame);
 
-    const innerGeometry = new THREE.ConeGeometry(0.18, 0.95, 12);
+    const innerHeight = 0.95;
+    const innerGeometry = new THREE.ConeGeometry(0.18, innerHeight, 16);
+
+    innerGeometry.rotateX(Math.PI);
+    innerGeometry.translate(0, -innerHeight / 2, 0);
+
     const innerMaterial = new THREE.MeshBasicMaterial({
-        color: 0xffee88
+        color: 0xffee88,
+        transparent: true,
+        opacity: 0.95,
+        depthWrite: false
     });
 
     innerFlame = new THREE.Mesh(innerGeometry, innerMaterial);
-    innerFlame.rotation.z = Math.PI;
-    innerFlame.position.y = -0.6;
     flameGroup.add(innerFlame);
 
     rocket.add(flameGroup);
 
-    engineLight = new THREE.PointLight(0xff7700, 3, 5);
+    engineLight = new THREE.PointLight(0xff7700, 3, 8);
     engineLight.position.set(0, -0.5, 0);
     rocket.add(engineLight);
 
@@ -290,14 +384,16 @@ function createEngineFlame() {
 // ==========================================
 
 function startCountdown() {
-    if (countdownStarted || countdownRunning || countdownFinished) return;
+    if (countdownStarted || countdownRunning || countdownFinished) {
+        return;
+    }
 
     countdownStarted = true;
     countdownRunning = true;
 
     startSmokeEffect();
 
-    missionStatus.textContent = 'STATUS: COUNTDOWN INITIATED';
+    missionStatus.textContent = 'STATUS: COUNTDOWN INITIATED (build v6)';
     instructionText.textContent = 'Preparing for launch...';
 
     const sequence = ['3', '2', '1', 'LIFTOFF!'];
@@ -327,10 +423,19 @@ function startCountdown() {
 // LAUNCH AND CINEMATIC CAMERA
 // ==========================================
 
-let launchStartY = 0;
+let launchStartPosition = new THREE.Vector3();
 let cameraOffsetStart = new THREE.Vector3();
 let cameraOffsetEnd = new THREE.Vector3();
 let cameraTransition = 0;
+
+const rocketCentreOffset = new THREE.Vector3();
+const rocketCentre = new THREE.Vector3();
+
+let currentTilt = 0;
+
+const targetTilt = THREE.MathUtils.degToRad(
+    TARGET_TILT_DEGREES
+);
 
 function startRocketLaunch() {
     if (!rocket) {
@@ -349,18 +454,21 @@ function beginRocketLaunch() {
     launchPending = false;
     rocketLaunchActive = true;
     cameraTransition = 0;
+    currentTilt = 0;
+
+    rocket.updateMatrixWorld(true);
+
+    const box = new THREE.Box3().setFromObject(rocket);
+    box.getCenter(rocketCentreOffset).sub(rocket.position);
 
     const flame = createEngineFlame();
     flame.visible = true;
     engineLight.visible = true;
 
-    launchStartY = rocket.position.y;
+    launchStartPosition.copy(rocket.position);
 
-    // Preserve the existing launch camera angle before transitioning.
     cameraOffsetStart.copy(cameraStartPosition).sub(rocket.position);
-
-    // Destination: behind the rocket, with a small side angle.
-    cameraOffsetEnd.set(3, -3, 26);
+    cameraOffsetEnd.set(0, 5, 24);
 
     missionStatus.textContent = 'STATUS: LIFTOFF — ROCKET ASCENDING';
     instructionText.textContent = 'Leaving the launch island...';
@@ -385,6 +493,11 @@ const clock = new THREE.Clock();
 const launchSpeed = 10;
 const launchDistance = 600;
 
+let spaceProgress = 0;
+let starFade = 0;
+
+const flyDirection = new THREE.Vector3();
+
 function animate() {
     requestAnimationFrame(animate);
 
@@ -393,30 +506,34 @@ function animate() {
     updateSmokeEffect(deltaTime);
 
     if (rocketLaunchActive && rocket) {
-        const currentSpeed = updateRocketControls(
+        const controlsSpeed = updateRocketControls(
             rocket,
             deltaTime,
             launchSpeed
         );
 
-        rocket.position.y += currentSpeed * deltaTime;
+        const currentSpeed = Math.max(
+            Number.isFinite(controlsSpeed)
+                ? controlsSpeed
+                : launchSpeed,
+            launchSpeed * 0.6
+        ) * SPEED_MULTIPLIER;
 
-        const distanceTravelled = rocket.position.y - launchStartY;
-        const progress = THREE.MathUtils.clamp(
-            distanceTravelled / launchDistance,
-            0,
-            1
-        );
+        const heightGained =
+            rocket.position.y - launchStartPosition.y;
 
-        // Clouds fade individually as the rocket passes them.
         const cloudsCleared = updateClouds(rocket.position.y);
 
-        // Start the camera move only after the final cloud is cleared.
-        const cameraMoveStartY =
-            launchStartY + getCloudClearanceHeight() + 16;
+        // Cinematic camera transition after clearing the clouds.
+        const distanceNow = rocket.position.distanceTo(
+            launchStartPosition
+        );
+
+        const cameraMoveStartDistance =
+            getCloudClearanceHeight() + 16;
 
         const cameraMoveProgress = THREE.MathUtils.clamp(
-            (rocket.position.y - cameraMoveStartY) / 65,
+            (distanceNow - cameraMoveStartDistance) / 65,
             0,
             1
         );
@@ -432,56 +549,116 @@ function animate() {
             );
         }
 
+        // Tip the rocket forward after the camera begins moving behind it.
+        const desiredTilt =
+            cloudsCleared && cameraTransition > 0.3
+                ? targetTilt
+                : 0;
+
+        currentTilt +=
+            (desiredTilt - currentTilt) *
+            (1 - Math.exp(-TILT_SPEED * deltaTime));
+
+        rocket.rotation.set(-currentTilt, 0, rocket.rotation.z);
+
+        // Move in the direction the rocket is pointing.
+        flyDirection.set(
+            0,
+            Math.cos(currentTilt),
+            -Math.sin(currentTilt)
+        );
+
+        rocket.position.addScaledVector(
+            flyDirection,
+            currentSpeed * deltaTime
+        );
+
+        const distanceTravelled = rocket.position.distanceTo(
+            launchStartPosition
+        );
+
+        const progress = THREE.MathUtils.clamp(
+            distanceTravelled / launchDistance,
+            0,
+            1
+        );
+
+        if (heightGained > 12) {
+            smokeStopping = true;
+        }
+
+        // Keep the rocket's body centre in view as it tilts.
+        rocketCentre
+            .copy(rocketCentreOffset)
+            .applyQuaternion(rocket.quaternion)
+            .add(rocket.position);
+
         const cameraOffset = cameraOffsetStart.clone().lerp(
             cameraOffsetEnd,
             cameraTransition
         );
 
-        const desiredCameraPosition = rocket.position.clone().add(
+        const desiredCameraPosition = rocketCentre.clone().add(
             cameraOffset
         );
 
         camera.position.lerp(
             desiredCameraPosition,
-            1 - Math.exp(-2.5 * deltaTime)
+            1 - Math.exp(-5 * deltaTime)
         );
 
-        // Aim slightly above the rocket's centre to keep its nose in view.
-        const lookTarget = rocket.position.clone();
-        lookTarget.y += 1.5;
-        camera.lookAt(lookTarget);
+        camera.lookAt(rocketCentre);
 
-        // Transition from the blue sky into deep space.
+        // Transition the sky from blue to deep space.
         const skyProgress = THREE.MathUtils.clamp(
-            (progress - 0.12) / 0.65,
+            (progress - 0.04) / 0.25,
             0,
             1
         );
 
-        const smoothSkyProgress =
+        spaceProgress =
             skyProgress * skyProgress * (3 - 2 * skyProgress);
+
+        // Fade in only the small round background stars.
+        const starRaw = THREE.MathUtils.clamp(
+            (progress - 0.12) / 0.30,
+            0,
+            1
+        );
+
+        starFade = starRaw * starRaw * (3 - 2 * starRaw);
 
         scene.background.copy(skyColour).lerp(
             spaceColour,
-            smoothSkyProgress
+            spaceProgress
         );
 
-        spaceObjects.stars.material.opacity = smoothSkyProgress;
+        if (spaceProgress > 0.6) {
+            missionStatus.textContent = 'STATUS: ENTERING SPACE';
+            instructionText.textContent =
+                'Flying forward to the portfolio planets...';
+        }
 
-        // Keep the planet hidden until the portfolio sequence is added.
-        spaceObjects.planet.material.opacity = 0;
-        spaceObjects.atmosphere.material.opacity = 0;
-
+        // Engine flame animation.
         if (engineFlame && innerFlame && engineLight) {
-            const speedFactor = currentSpeed / launchSpeed;
+            const flameSpeedFactor = Math.max(
+                currentSpeed / launchSpeed,
+                0.3
+            );
 
             engineFlame.scale.y =
-                speedFactor * (0.85 + Math.random() * 0.3);
+                flameSpeedFactor * (0.85 + Math.random() * 0.3);
+
+            engineFlame.scale.x =
+                engineFlame.scale.z = 0.9 + Math.random() * 0.2;
 
             innerFlame.scale.y =
-                speedFactor * (0.8 + Math.random() * 0.4);
+                flameSpeedFactor * (0.55 + Math.random() * 0.2);
 
-            engineLight.intensity = 2.5 + speedFactor * 2.5;
+            innerFlame.scale.x = innerFlame.scale.z = 0.6;
+
+            engineLight.intensity =
+                2.5 + flameSpeedFactor * 2.5;
         }
 
         if (distanceTravelled >= launchDistance) {
@@ -492,6 +669,11 @@ function animate() {
                 'Welcome to space. Portfolio destinations are coming next.';
         }
     }
+
+    // The background stars follow the camera.
+    // No streaks, no star trails, and no radial warp-speed effect.
+    spaceObjects.stars.position.copy(camera.position);
+    spaceObjects.stars.material.opacity = starFade;
 
     renderer.render(scene, camera);
 }
